@@ -59,7 +59,7 @@ async def testar_automacao():
             print(f"🧠 [DEBUG][{id_exec}] Solicitando análise e correlação à IA...", flush=True)
             
             prompt_logic = f"""
-            Analise cuidadosamente esta imagem de captcha numerada de 1 a 9.
+            Analise cuidadosamente esta imagem de captcha numerada de 1 a 16.
             A pergunta é: "{pergunta}"
             
             Siga estes passos:
@@ -118,3 +118,4 @@ async def testar_automacao():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
