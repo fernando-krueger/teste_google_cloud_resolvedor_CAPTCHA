@@ -68,7 +68,9 @@ async def testar_automacao():
             pergunta = await page.inner_text("div.captchaInstructions")
             pergunta_limpa = pergunta.replace('\n', ' ').strip()
             print(f"📝 [DEBUG][{id_exec}] Texto da pergunta: '{pergunta_limpa}'", flush=True)
-
+            print(f"'{pergunta_limpa}'")
+            
+            
             # 2. Debug do Grid/Screenshot
             print(f"📸 [DEBUG][{id_exec}] Localizando grid de imagens...", flush=True)
             grid_element = await page.query_selector(".captchaGrid")
@@ -131,3 +133,4 @@ if __name__ == "__main__":
     import uvicorn
     print("📡 [DEBUG] Iniciando Servidor Uvicorn na porta 8080...", flush=True)
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
