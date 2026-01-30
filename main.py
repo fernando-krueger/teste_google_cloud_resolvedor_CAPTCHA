@@ -63,7 +63,8 @@ async def testar_automacao():
             A pergunta é: "{pergunta}"
             
             Siga estes passos:
-            1. Identifique o que aparece em cada um dos quadrados numerados.
+            1. Faça a analize da imagem inteira, pode ser que ela seja uma imagem dividida em varias como um quebra-cabeça.
+            2. Identifique o que aparece em cada um dos quadrados numerados.
             2. Verifique qual desses objetos corresponde à pergunta feita.
             3. Explique brevemente sua correlação.
             4. No final, escreva 'RESULTADO: X' onde X é apenas o número do quadrado correto.
@@ -118,4 +119,5 @@ async def testar_automacao():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
 
