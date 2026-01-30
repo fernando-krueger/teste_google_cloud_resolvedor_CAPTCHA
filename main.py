@@ -11,7 +11,6 @@ from google.cloud import storage
 
 app = FastAPI()
 
-# --- CONFIGURAÇÕES ---
 PROJECT_ID = "numeric-skill-484321-a5" 
 LOCATION = "us-central1"
 BUCKET_NAME = "imagem-captcha"
@@ -22,97 +21,117 @@ storage_client = storage.Client(project=PROJECT_ID)
 @app.get("/testar")
 async def testar_automacao():
     id_exec = f"MULTI-{int(time.time())}"
-    print(f"\n🚀 [{id_exec}] INICIANDO RESOLUÇÃO MULTI-ETAPAS", flush=True)
+    print(f"\n🚀 [{id_exec}] >>> INICIANDO SESSÃO MULTI-ETAPAS <<<", flush=True)
     
     async with async_playwright() as p:
         browser = await p.chromium.launch(args=["--no-sandbox", "--disable-setuid-sandbox"])
         page = await browser.new_page()
         
         try:
-            print(f"🌐 [DEBUG] Acessando site...", flush=True)
+            print(f"🌐 [DEBUG] Navegando para o site...", flush=True)
             await page.goto("https://john.fun/captcha-game", timeout=60000)
             
             total_resolvidos = 0
-            # Loop Principal: Continua enquanto houver desafios na tela
-            while total_resolvidos < 15: 
-                print(f"\n🧩 --- DESAFIO ATUAL: {total_resolvidos + 1} ---", flush=True)
+            while total_resolvidos < 15:
+                print(f"\n🧩 [DESAFIO {total_resolvidos + 1}] Localizando elementos...", flush=True)
                 
-                # Verifica se o captcha ainda existe na tela
                 try:
-                    await page.wait_for_selector("div.captchaInstructions", timeout=10000)
+                    await page.wait_for_selector("div.captchaInstructions", timeout=15000)
                 except:
-                    print(f"🏁 [DEBUG] Seletor de instrução não encontrado. Desafio completo!", flush=True)
+                    print(f"🏁 [FIM] Instruções não encontradas. Verifique se o captcha acabou.", flush=True)
                     break
 
-                historico_tentativas = [] 
+                # Memória desta imagem específica
+                historico_da_etapa = set() # Usando set para busca rápida
                 sucesso_na_etapa = False
 
-                # Loop de Tentativas para o MESMO desafio (caso erre a combinação)
-                for rodada in range(1, 6):
-                    await asyncio.sleep(2) # Espera renderizar nova imagem
+                for rodada in range(1, 10): # Aumentado para 10 tentativas por imagem
+                    print(f"--- 🔄 Etapa {total_resolvidos+1} | Rodada {rodada} ---", flush=True)
+                    
+                    # Captura pergunta e imagem
+                    await asyncio.sleep(2)
                     pergunta = (await page.inner_text("div.captchaInstructions")).replace('\n', ' ').strip()
-                    
                     grid_element = await page.query_selector(".captchaGrid")
-                    if not grid_element: break
-                    
                     screenshot_bytes = await grid_element.screenshot()
                     
-                    # Salva para log
+                    # Log Visual no Storage
                     hora_f = datetime.now().strftime("%H:%M:%S")
-                    storage_client.bucket(BUCKET_NAME).blob(f"{id_exec}_E{total_resolvidos}_R{rodada}.png").upload_from_string(screenshot_bytes, content_type='image/png')
+                    blob_name = f"{id_exec}_E{total_resolvidos+1}_R{rodada}_{hora_f}.png"
+                    storage_client.bucket(BUCKET_NAME).blob(blob_name).upload_from_string(screenshot_bytes, content_type='image/png')
 
-                    # Prompt com memória de erros da rodada atual
-                    instrucao_memoria = ""
-                    if historico_tentativas:
-                        falhas = " | ".join(historico_tentativas)
-                        instrucao_memoria = f"\n⚠️ COMBINAÇÕES QUE JÁ FALHARAM NESTE DESAFIO: [{falhas}]"
+                    # Monta prompt com histórico de falhas
+                    falhas_str = " Nenhuma ainda" if not historico_da_etapa else " | ".join(list(historico_da_etapa))
+                    print(f"📡 [DEBUG] Enviando para IA. Falhas registradas: {falhas_str}", flush=True)
 
-                    prompt = f"Pergunta: {pergunta}{instrucao_memoria}\nResponda apenas com RESULTADO: n1, n2..."
+                    prompt = f"""
+                    Pergunta: {pergunta}
+                    COMBINAÇÕES QUE JÁ FALHARAM NESTA IMAGEM: [{falhas_str}]
+                    
+                    Analise a imagem e forneça uma NOVA combinação (diferente das falhas acima).
+                    Escreva apenas: RESULTADO: n1, n2, n3
+                    """
                     
                     response = client_ai.models.generate_content(
                         model='gemini-2.0-flash',
                         contents=[prompt, types.Part.from_bytes(data=screenshot_bytes, mime_type='image/png')]
                     )
                     
+                    # Extração robusta
                     try:
-                        resultado_bruto = response.text.split("RESULTADO:")[-1].strip()
-                        numeros_atuais = re.findall(r'\d+', resultado_bruto)
-                        numeros_atuais.sort(key=int)
-                        combo_str = ",".join(numeros_atuais)
-                    except: continue
+                        texto_ia = response.text
+                        resultado_bruto = texto_ia.split("RESULTADO:")[-1].strip()
+                        numeros_lista = re.findall(r'\d+', resultado_bruto)
+                        numeros_lista.sort(key=int)
+                        combo_str = ",".join(numeros_lista)
+                        
+                        print(f"🧠 [IA] Pensamento extraído: {combo_str}", flush=True)
+                    except:
+                        print(f"⚠️ [ERRO] IA enviou formato inválido. Texto: {texto_ia[:100]}", flush=True)
+                        continue
 
-                    # Clica nos quadrados
-                    for num in numeros_atuais:
+                    # FILTRO DE REPETIÇÃO NO PYTHON (Se a IA teimar, o código ignora e tenta de novo)
+                    if combo_str in historico_da_etapa:
+                        print(f"⛔ [FILTRO] IA repetiu a combinação {combo_str}! Ignorando clique e pedindo nova...", flush=True)
+                        continue 
+
+                    # Execução dos Cliques
+                    print(f"🖱️ [AÇÃO] Clicando nos quadrados: {numeros_lista}", flush=True)
+                    for num in numeros_lista:
                         await page.click(f".captchaGrid > div:nth-child({num})")
                         await asyncio.sleep(0.3)
 
-                    # Verifica
+                    # Verificar
+                    print(f"🔘 [AÇÃO] Clicando em Verificar...", flush=True)
                     await page.click("div.captchaBottomBar > div.verifyButton")
-                    await asyncio.sleep(2.5)
+                    await asyncio.sleep(3)
 
-                    # Checa erro (texto vermelho)
+                    # Checagem de Erro
                     if await page.is_visible("div.captchaBottomBar > div.redText"):
-                        print(f"❌ Errou a combinação {combo_str}. Tentando novamente...", flush=True)
-                        historico_tentativas.append(combo_str)
-                        # Desmarca
-                        for num in numeros_atuais:
+                        erro_msg = await page.inner_text("div.captchaBottomBar > div.redText")
+                        print(f"❌ [LOG] Falhou: {erro_msg}. Adicionando {combo_str} ao histórico.", flush=True)
+                        historico_da_etapa.add(combo_str)
+                        
+                        # Limpa seleção clicando novamente
+                        print(f"🧹 [AÇÃO] Limpando seleção anterior...", flush=True)
+                        for num in numeros_lista:
                             await page.click(f".captchaGrid > div:nth-child({num})")
                     else:
-                        print(f"✅ Etapa {total_resolvidos + 1} concluída com sucesso!", flush=True)
+                        print(f"✅ [SUCESSO] Etapa {total_resolvidos+1} vencida!", flush=True)
                         sucesso_na_etapa = True
                         total_resolvidos += 1
-                        break # Sai do loop de tentativas e volta para o loop principal (próxima imagem)
+                        break # Sai do loop de rodadas e vai para a próxima imagem
 
                 if not sucesso_na_etapa:
-                    print("🚫 Falha persistente nesta etapa. Abortando.", flush=True)
+                    print(f"🛑 [PARADA] Não foi possível resolver a etapa {total_resolvidos+1} após várias tentativas.", flush=True)
                     break
 
-            return {"id": id_exec, "total_resolvidos": total_resolvidos, "status": "finalizado"}
+            return {"sessao": id_exec, "total_etapas": total_resolvidos, "status": "concluido"}
 
         except Exception as e:
-            print(f"🔥 ERRO: {e}", flush=True)
+            print(f"🔥 [ERRO CRÍTICO] {str(e)}", flush=True)
             return {"erro": str(e)}
         finally:
+            print(f"🧹 [DEBUG] Fechando sessão.", flush=True)
             await browser.close()
 
 if __name__ == "__main__":
