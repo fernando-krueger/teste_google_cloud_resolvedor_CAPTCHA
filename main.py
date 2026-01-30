@@ -74,7 +74,7 @@ async def testar_automacao():
             response = client.models.generate_content(
                 model='gemini-2.0-flash', 
                 contents=[
-                    f"A instrução é: {pergunta}. Responda apenas o número do quadrado correto na imagem.",
+                    f"A instrução é: {pergunta}. de acordo com essa pergunta, responda apenas o número do quadrado correto.",
                     types.Part.from_bytes(data=screenshot_bytes, mime_type='image/png')
                 ]
             )
@@ -102,3 +102,4 @@ async def testar_automacao():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
