@@ -4,3 +4,4 @@ playwright
 httpx
 google-cloud-aiplatform
 Pillow
+google-genai
