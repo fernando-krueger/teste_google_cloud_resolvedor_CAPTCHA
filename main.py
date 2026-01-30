@@ -66,6 +66,7 @@ async def testar_automacao():
                 {instrucao_memoria}
                 
                 PASSO A PASSO:
+                1. analise a imagem como um todo, ela pode estar dividida como se fosse um quebra-cabeça
                 1. Descreva o que vê em cada quadrado relevante.
                 2. Identifique a combinação de quadrados que responde à pergunta.
                 3. Garanta que essa combinação é diferente das que já falharam.
@@ -147,3 +148,4 @@ async def testar_automacao():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
