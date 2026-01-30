@@ -15,109 +15,107 @@ PROJECT_ID = "numeric-skill-484321-a5"
 LOCATION = "us-central1"
 BUCKET_NAME = "imagem-captcha"
 
-client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
+client_ai = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
 storage_client = storage.Client(project=PROJECT_ID)
-
-def salvar_no_storage(image_bytes, exec_id):
-    try:
-        hora_atual = datetime.now().strftime("%H:%M:%S")
-        nome_arquivo = f"captcha {hora_atual}.png"
-        bucket = storage_client.bucket(BUCKET_NAME)
-        blob = bucket.blob(nome_arquivo)
-        blob.upload_from_string(image_bytes, content_type='image/png')
-        print(f"✨ [DEBUG][{exec_id}] Imagem salva no Storage: {nome_arquivo}", flush=True)
-        return nome_arquivo
-    except Exception as e:
-        print(f"⚠️ [DEBUG][{exec_id}] Erro Storage: {e}", flush=True)
-        return None
 
 @app.get("/testar")
 async def testar_automacao():
-    id_exec = f"RUN-{int(time.time())}"
-    print(f"\n--- INICIANDO EXECUÇÃO COM ANÁLISE PRÉVIA {id_exec} ---", flush=True)
+    id_exec = f"LOOP-{int(time.time())}"
+    print(f"🚀 [{id_exec}] Iniciando ciclo de resolução inteligente...", flush=True)
     
     async with async_playwright() as p:
         browser = await p.chromium.launch(args=["--no-sandbox", "--disable-setuid-sandbox"])
         page = await browser.new_page()
         
         try:
-            print(f"🌐 [DEBUG][{id_exec}] Acessando site...", flush=True)
             await page.goto("https://john.fun/captcha-game", timeout=60000)
             
-            await page.wait_for_selector("div.captchaInstructions")
-            await asyncio.sleep(3) 
-            pergunta = (await page.inner_text("div.captchaInstructions")).replace('\n', ' ').strip()
-            print(f"❓ [DEBUG][{id_exec}] Pergunta lida: {pergunta}", flush=True)
+            tentativas_bloqueadas = []
+            sucesso_final = False
 
-            grid_element = await page.query_selector(".captchaGrid")
-            screenshot_bytes = await grid_element.screenshot()
-            
-            # Salva no Storage para conferência manual depois
-            arquivo_salvo = salvar_no_storage(screenshot_bytes, id_exec)
-
-            # --- NOVO PROMPT COM RACIOCÍNIO ---
-            print(f"🧠 [DEBUG][{id_exec}] Solicitando análise e correlação à IA...", flush=True)
-            
-            prompt_logic = f"""
-            Analise cuidadosamente esta imagem de captcha numerada de 1 a 16.
-            A pergunta é: "{pergunta}"
-            
-            Siga estes passos:
-            1. Faça a analize da imagem inteira, pode ser que ela seja uma imagem dividida em varias como um quebra-cabeça.
-            2. Identifique o que aparece em cada um dos quadrados numerados.
-            2. Verifique qual desses objetos corresponde à pergunta feita.
-            3. Explique brevemente sua correlação.
-            4. No final, escreva 'RESULTADO: X' onde X é apenas o número do quadrado correto.
-            """
-            
-            ia_start = time.time()
-            response = client.models.generate_content(
-                model='gemini-2.0-flash', 
-                contents=[
-                    prompt_logic,
-                    types.Part.from_bytes(data=screenshot_bytes, mime_type='image/png')
-                ]
-            )
-            ia_duration = time.time() - ia_start
-            
-            pensamento_ia = response.text
-            print(f"💬 [DEBUG][{id_exec}] PENSAMENTO DA IA:\n{pensamento_ia}", flush=True)
-
-            # Extração do número final (procura por 'RESULTADO: X')
-            try:
-                if "RESULTADO:" in pensamento_ia:
-                    resposta_final = pensamento_ia.split("RESULTADO:")[-1].strip().replace('.', '')
-                else:
-                    # Fallback caso ela não siga o formato
-                    resposta_final = "".join(filter(str.isdigit, pensamento_ia))[-1] 
+            # Loop de até 5 tentativas para vencer o desafio
+            for rodada in range(1, 6):
+                print(f"\n🔄 [DEBUG][{id_exec}] RODADA {rodada} - Números já tentados: {tentativas_bloqueadas}", flush=True)
                 
-                print(f"🎯 [DEBUG][{id_exec}] Número extraído para clique: {resposta_final}", flush=True)
-            except Exception as e:
-                print(f"❌ [DEBUG][{id_exec}] Erro ao extrair número: {e}", flush=True)
-                resposta_final = "1" # Default seguro
+                # 1. Captura Pergunta e Imagem
+                await page.wait_for_selector("div.captchaInstructions")
+                await asyncio.sleep(2)
+                pergunta = (await page.inner_text("div.captchaInstructions")).replace('\n', ' ').strip()
+                
+                grid_element = await page.query_selector("div.captchaGrid")
+                screenshot_bytes = await grid_element.screenshot()
+                
+                # Salva no Storage para log visual
+                hora_f = datetime.now().strftime("%H:%M:%S")
+                blob_name = f"captcha {hora_f} rodada {rodada}.png"
+                storage_client.bucket(BUCKET_NAME).blob(blob_name).upload_from_string(screenshot_bytes, content_type='image/png')
 
-            # Execução do clique
-            print(f"🖱️ [DEBUG][{id_exec}] Clicando no quadrado {resposta_final}...", flush=True)
-            await page.click(f"text='{resposta_final}'", timeout=5000)
-            print(f"✅ [DEBUG][{id_exec}] Clique concluído.", flush=True)
+                # 2. IA com Memória de Erros
+                prompt = f"""
+                Analise a imagem. Pergunta: "{pergunta}"
+                Números que você NÃO pode escolher (já deram erro): {tentativas_bloqueadas}
+                
+                Explique o que vê e decida o melhor quadrado restante.
+                No final escreva apenas: RESULTADO: X
+                """
+                
+                response = client_ai.models.generate_content(
+                    model='gemini-2.0-flash',
+                    contents=[prompt, types.Part.from_bytes(data=screenshot_bytes, mime_type='image/png')]
+                )
+                
+                pensamento = response.text
+                print(f"🧠 [DEBUG] IA Pensou: {pensamento[:200]}...", flush=True)
+                
+                # Extrai número (ex: "RESULTADO: 4")
+                try:
+                    escolha = "".join(filter(str.isdigit, pensamento.split("RESULTADO:")[-1]))[0]
+                except:
+                    print(f"⚠️ Erro ao extrair número, tentando o primeiro dígito disponível...", flush=True)
+                    escolha = "".join(filter(str.isdigit, pensamento))[-1]
+
+                # 3. Ação: Clicar no Quadrado
+                # Seletor dinâmico baseado no número (nth-child)
+                # Nota: Em grids, o número costuma bater com o nth-child
+                selector_quadrado = f".captchaGrid > div:nth-child({escolha})"
+                print(f"🖱️ [DEBUG] Clicando no quadrado {escolha}...", flush=True)
+                await page.click(selector_quadrado)
+                
+                # 4. Clicar em Verificar
+                btn_verificar = "div.captchaBottomBar > div.verifyButton"
+                print(f"🔘 [DEBUG] Clicando em Verificar...", flush=True)
+                await page.click(btn_verificar)
+                await asyncio.sleep(2)
+
+                # 5. Checar Resultado
+                erro_selector = "div.captchaBottomBar > div.redText"
+                is_erro = await page.is_visible(erro_selector)
+
+                if is_erro:
+                    msg_erro = await page.inner_text(erro_selector)
+                    print(f"❌ [DEBUG] ERRO DETECTADO: {msg_erro}. Desmarcando {escolha}...", flush=True)
+                    tentativas_bloqueadas.append(escolha)
+                    # Clica de novo no mesmo quadrado para desmarcar antes da próxima rodada
+                    await page.click(selector_quadrado)
+                else:
+                    print(f"✨ [DEBUG] SEM ERRO! Verificando se avançou ou concluiu...", flush=True)
+                    # Se o grid sumiu ou mudou, consideramos sucesso da rodada
+                    sucesso_final = True
+                    break
 
             return {
-                "pergunta": pergunta,
-                "analise_ia": pensamento_ia,
-                "numero_clicado": resposta_final,
-                "tempo_ia": f"{ia_duration:.2f}s",
-                "imagem": arquivo_salvo
+                "status": "sucesso" if sucesso_final else "limite_atingido",
+                "tentativas_bloqueadas": tentativas_bloqueadas,
+                "ultima_escolha": escolha
             }
 
         except Exception as e:
-            print(f"🔥 [DEBUG][{id_exec}] ERRO: {str(e)}", flush=True)
-            return {"status": "erro", "detalhes": str(e)}
+            print(f"🔥 [DEBUG] ERRO GERAL: {str(e)}", flush=True)
+            return {"erro": str(e)}
         finally:
             await browser.close()
-            print(f"🧹 [DEBUG][{id_exec}] Navegador fechado.", flush=True)
+            print(f"🧹 [DEBUG] Navegador fechado.", flush=True)
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
-
-
