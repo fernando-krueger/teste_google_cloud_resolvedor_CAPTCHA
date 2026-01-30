@@ -45,7 +45,7 @@ async def testar_automacao():
                 historico_da_etapa = set() # Usando set para busca rápida
                 sucesso_na_etapa = False
 
-                for rodada in range(1, 10): # Aumentado para 10 tentativas por imagem
+                for rodada in range(1, 20): # Aumentado para 10 tentativas por imagem
                     print(f"--- 🔄 Etapa {total_resolvidos+1} | Rodada {rodada} ---", flush=True)
                     
                     # Captura pergunta e imagem
@@ -67,8 +67,14 @@ async def testar_automacao():
                     Pergunta: {pergunta}
                     COMBINAÇÕES QUE JÁ FALHARAM NESTA IMAGEM: [{falhas_str}]
                     
-                    Analise a imagem e forneça uma NOVA combinação (diferente das falhas acima).
-                    Escreva apenas: RESULTADO: n1, n2, n3
+                    PASSO A PASSO:
+                    1. Verifique a imagem como um todo, pois ela pode ser parecido com um quebra-cabeça.
+                    1. Descreva o que vê em cada quadrado relevante.
+                    2. Identifique a combinação de quadrados que responde à pergunta.
+                    3. Garanta que essa combinação é diferente das que já falharam.
+                    
+                    No final, escreva : RESULTADO: n1, n2, n3
+                 
                     """
                     
                     response = client_ai.models.generate_content(
@@ -137,3 +143,4 @@ async def testar_automacao():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
